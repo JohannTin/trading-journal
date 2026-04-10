@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 28% 97%;
+    --foreground: 228 40% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 228 40% 10%;
+    --border: 220 18% 88%;
+    --primary: 40 78% 36%;
+    --primary-foreground: 0 0% 100%;
+    --muted: 220 18% 94%;
+    --muted-foreground: 220 14% 46%;
+    --accent: 220 18% 92%;
+    --accent-foreground: 228 40% 10%;
+    --radius: 0.2rem;
+  }
+
+  .dark {
+    --background: 229 48% 5%;
+    --foreground: 220 28% 93%;
+    --card: 229 44% 9%;
+    --card-foreground: 220 28% 93%;
+    --border: 227 38% 17%;
+    --primary: 40 90% 52%;
+    --primary-foreground: 229 48% 5%;
+    --muted: 228 36% 12%;
+    --muted-foreground: 220 18% 52%;
+    --accent: 228 36% 14%;
+    --accent-foreground: 220 28% 93%;
+    --radius: 0.2rem;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'IBM Plex Sans', ui-sans-serif, sans-serif;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
+
+/* Stat band dividers */
+.stat-cell:not(:last-child) {
+  border-right: 1px solid hsl(var(--border));
+}
