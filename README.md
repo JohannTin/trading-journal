@@ -57,7 +57,7 @@ Double-click `start.command`. It installs dependencies on first run and opens th
 
 ### Mac — demo mode
 
-Double-click `start-demo.command`. It loads a pre-seeded demo database (no setup required) and opens the browser automatically. Your real data is unaffected — the demo runs against `demo/trading_journal.db`.
+Double-click `start-demo.command`. Seeds fresh demo data anchored to the current month, then opens the browser. Runs against `demo/trading_journal.db` so your real data is untouched.
 
 ## Database
 
@@ -111,18 +111,3 @@ trading-journal/
 ├── start.command        # Mac one-click launcher
 └── start-demo.command   # Mac demo launcher
 ```
-
-## P&L Calculation
-
-Exit P&L is computed server-side on every exit:
-
-```
-pnl = (exitPrice − fillPrice) × qty × 100
-pct = ((exitPrice − fillPrice) / fillPrice) × 100
-```
-
-Put trades use the same formula — you buy the put at fill price and sell at exit price.
-
-## Overtrade Detection
-
-A day is flagged as high-frequency when its trade count exceeds **1.5× the daily average**. Flagged days appear with a yellow ring on the calendar and trigger the alert banner on the dashboard.
