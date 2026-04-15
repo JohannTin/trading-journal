@@ -16,7 +16,6 @@ A local-first options trading journal built to reduce overtrading and track repe
 - **Journal** — daily pre-market notes, mood tracking, image attachments
 - **Accounts** — separate 0DTE and Swing accounts with independent P&L tracking
 - **Data** — full JSON export/import, soft-delete trash with restore
-- **Dark / Light mode** with persistent preference
 
 ## Setup
 
@@ -51,7 +50,7 @@ npm run dev
 
 Frontend runs at `http://localhost:5173`.
 
-### Mac — one-click start
+### Mac - one-click start
 
 Double-click `start.command`. It installs dependencies on first run and opens the browser automatically.
 
