@@ -1,18 +1,102 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Save, ExternalLink, Flag, Search, X, ImagePlus, Trash2, RotateCcw } from 'lucide-react'
-import { getJournalEntry, upsertJournalEntry, getTrades, getJournalDates, getCalendarStats, searchJournalEntries, getJournalImages, uploadJournalImage, deleteJournalImage, deleteJournalEntry, getDeletedJournalEntries, restoreJournalEntry, permanentDeleteJournalEntry } from '../api'
+import { ChevronLeft, ChevronRight, Save, ExternalLink, Flag, Search, X, ImagePlus, Trash2, RotateCcw, Tag, Pencil, Eye } from 'lucide-react'
+import { getJournalEntry, upsertJournalEntry, getTrades, getJournalDates, getCalendarStats, searchJournalEntries, getJournalImages, uploadJournalImage, deleteJournalImage, deleteJournalEntry, getDeletedJournalEntries, restoreJournalEntry, permanentDeleteJournalEntry, getJournalTags } from '../api'
 import { useAccount } from '../AccountContext'
 import Calendar from './Calendar'
 import TradeChart from './TradeChart'
+import { getAppSettings, DEFAULT_MOODS, getMoodStyle } from '../appSettings'
 
-const MOODS = [
-  { value: 'focused',    label: 'Focused',    cls: 'border-green-500/50  bg-green-500/10  text-green-400'  },
-  { value: 'hesitant',   label: 'Hesitant',   cls: 'border-blue-500/50   bg-blue-500/10   text-blue-400'   },
-  { value: 'distracted', label: 'Distracted', cls: 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400' },
-  { value: 'fomo',       label: 'FOMO',       cls: 'border-orange-500/50 bg-orange-500/10 text-orange-400' },
-  { value: 'revenge',    label: 'Revenge',    cls: 'border-red-500/50    bg-red-500/10    text-red-400'    },
-]
+function TagInput({ value, onChange, suggestions = [] }) {
+  const [input, setInput] = useState('')
+  const [open, setOpen] = useState(false)
+  const inputRef = useRef(null)
+
+  const filtered = suggestions.filter(
+    s => s.toLowerCase().includes(input.toLowerCase()) && !value.includes(s)
+  )
+
+  function addTag(raw) {
+    const tag = raw.trim().toLowerCase().replace(/\s+/g, '-')
+    if (tag && !value.includes(tag)) onChange([...value, tag])
+    setInput('')
+    setOpen(false)
+  }
+
+  function removeTag(tag) {
+    onChange(value.filter(t => t !== tag))
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      if (input.trim()) addTag(input)
+    }
+    if (e.key === 'Backspace' && !input && value.length > 0) {
+      removeTag(value[value.length - 1])
+    }
+  }
+
+  const showDropdown = open && (filtered.length > 0 || input.trim())
+
+  return (
+    <div className="relative">
+      <div
+        className="flex flex-wrap gap-1.5 p-2 border border-border bg-muted/20 min-h-[36px] items-center cursor-text"
+        onClick={() => inputRef.current?.focus()}
+      >
+        {value.map(tag => (
+          <span
+            key={tag}
+            className="flex items-center gap-1 px-2 py-0.5 bg-primary/10 border border-primary/30 text-primary text-[10px] font-bold uppercase tracking-widest"
+          >
+            {tag}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); removeTag(tag) }}
+              className="hover:text-primary/60"
+            >
+              <X className="w-2.5 h-2.5" />
+            </button>
+          </span>
+        ))}
+        <input
+          ref={inputRef}
+          value={input}
+          onChange={e => { setInput(e.target.value); setOpen(true) }}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder={value.length === 0 ? 'Add tags…' : ''}
+          className="flex-1 min-w-[80px] bg-transparent text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
+        />
+      </div>
+      {showDropdown && (
+        <div className="absolute top-full left-0 right-0 z-20 border border-border bg-card shadow-lg max-h-36 overflow-y-auto">
+          {filtered.map(tag => (
+            <button
+              key={tag}
+              type="button"
+              onMouseDown={() => addTag(tag)}
+              className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors"
+            >
+              {tag}
+            </button>
+          ))}
+          {input.trim() && !value.includes(input.trim().toLowerCase().replace(/\s+/g, '-')) && (
+            <button
+              type="button"
+              onMouseDown={() => addTag(input)}
+              className="w-full text-left px-3 py-1.5 text-xs text-primary hover:bg-accent transition-colors"
+            >
+              Create &ldquo;{input.trim()}&rdquo;
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function toDateStr(d) {
   return d.toISOString().slice(0, 10)
@@ -28,25 +112,25 @@ function dollar(v) {
   return v >= 0 ? `+$${abs}` : `-$${abs}`
 }
 
-function JournalImages({ date, accountId }) {
+function JournalImages({ date }) {
   const queryClient = useQueryClient()
   const fileInputRef = useRef(null)
   const [dragging, setDragging] = useState(false)
   const [lightbox, setLightbox] = useState(null) // filename
 
   const { data: images = [] } = useQuery({
-    queryKey: ['journal-images', date, accountId],
-    queryFn: () => getJournalImages(date, accountId),
+    queryKey: ['journal-images', date],
+    queryFn: () => getJournalImages(date),
   })
 
   const uploadMutation = useMutation({
-    mutationFn: (file) => uploadJournalImage(date, accountId, file),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['journal-images', date, accountId] }),
+    mutationFn: (file) => uploadJournalImage(date, file),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['journal-images', date] }),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id) => deleteJournalImage(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['journal-images', date, accountId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['journal-images', date] }),
   })
 
   function handleFiles(files) {
@@ -135,20 +219,20 @@ function JournalImages({ date, accountId }) {
   )
 }
 
-function JournalTrash({ accountId, onClose, onRestore }) {
+function JournalTrash({ onClose, onRestore }) {
   const queryClient = useQueryClient()
 
   const { data: deleted = [], isLoading } = useQuery({
-    queryKey: ['journal-deleted', accountId],
-    queryFn: () => getDeletedJournalEntries(accountId),
+    queryKey: ['journal-deleted'],
+    queryFn: () => getDeletedJournalEntries(),
   })
 
   const restoreMutation = useMutation({
     mutationFn: (id) => restoreJournalEntry(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['journal'] })
-      queryClient.invalidateQueries({ queryKey: ['journal-dates', accountId] })
-      queryClient.invalidateQueries({ queryKey: ['journal-deleted', accountId] })
+      queryClient.invalidateQueries({ queryKey: ['journal-dates'] })
+      queryClient.invalidateQueries({ queryKey: ['journal-deleted'] })
       onRestore?.()
     },
   })
@@ -156,7 +240,7 @@ function JournalTrash({ accountId, onClose, onRestore }) {
   const permDeleteMutation = useMutation({
     mutationFn: (id) => permanentDeleteJournalEntry(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['journal-deleted', accountId] })
+      queryClient.invalidateQueries({ queryKey: ['journal-deleted'] })
     },
   })
 
@@ -189,7 +273,8 @@ function JournalTrash({ accountId, onClose, onRestore }) {
           ) : deleted.length === 0 ? (
             <p className="text-xs text-muted-foreground/50 text-center py-8">Trash is empty</p>
           ) : deleted.map(j => {
-            const moodMeta = j.mood ? MOODS.find(m => m.value === j.mood) : null
+            const moods = getAppSettings().moods ?? DEFAULT_MOODS
+            const moodMeta = j.mood ? moods.find(m => m.value === j.mood) : null
             const preview = j.pre_market || j.went_well || j.to_improve || ''
             return (
               <div key={j.id} className="flex items-start gap-3 p-3 border border-border hover:bg-accent/30 transition-colors">
@@ -197,7 +282,7 @@ function JournalTrash({ accountId, onClose, onRestore }) {
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs font-mono text-foreground">{j.date}</span>
                     {moodMeta && (
-                      <span className={`text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 border ${moodMeta.cls}`}>
+                      <span className="text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 border" style={getMoodStyle(moodMeta.color)}>
                         {moodMeta.label}
                       </span>
                     )}
@@ -240,7 +325,7 @@ function JournalTrash({ accountId, onClose, onRestore }) {
               onClick={() => {
                 if (!window.confirm(`Permanently delete all ${deleted.length} entries? This cannot be undone.`)) return
                 Promise.all(deleted.map(j => permanentDeleteJournalEntry(j.id))).then(() => {
-                  queryClient.invalidateQueries({ queryKey: ['journal-deleted', accountId] })
+                  queryClient.invalidateQueries({ queryKey: ['journal-deleted'] })
                 })
               }}
               className="text-[10px] font-bold uppercase tracking-widest text-rose-400/70 hover:text-rose-400 transition-colors"
@@ -262,18 +347,26 @@ export default function Journal() {
   const [chartTrade, setChartTrade] = useState(null)
   const [searchQ, setSearchQ] = useState('')
   const [searchMood, setSearchMood] = useState(null)
+  const [searchTag, setSearchTag] = useState(null)
   const [searchFlagged, setSearchFlagged] = useState(false)
 
-  const isSearching = searchQ.trim() !== '' || searchMood !== null || searchFlagged
+  const isSearching = searchQ.trim() !== '' || searchMood !== null || searchTag !== null || searchFlagged
 
   const { data: searchResults = [] } = useQuery({
-    queryKey: ['journal-search', accountId, searchQ, searchMood, searchFlagged],
-    queryFn: () => searchJournalEntries({ q: searchQ.trim() || undefined, mood: searchMood || undefined, flagged: searchFlagged || undefined, accountId }),
+    queryKey: ['journal-search', searchQ, searchMood, searchTag, searchFlagged],
+    queryFn: () => searchJournalEntries({ q: searchQ.trim() || undefined, mood: searchMood || undefined, tag: searchTag || undefined, flagged: searchFlagged || undefined }),
     enabled: isSearching,
   })
 
-  const [form, setForm] = useState({ pre_market: '', went_well: '', to_improve: '', mood: null, flagged: false })
+  const { data: allTags = [] } = useQuery({
+    queryKey: ['journal-tags'],
+    queryFn: () => getJournalTags(),
+  })
+
+  const moods = getAppSettings().moods ?? DEFAULT_MOODS
+  const [form, setForm] = useState({ pre_market: '', went_well: '', to_improve: '', mood: null, flagged: false, tags: [] })
   const [saved, setSaved] = useState(false)
+  const [viewMode, setViewMode] = useState(true)
   const [datePickerOpen, setDatePickerOpen] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
   const [calendarOffset, setCalendarOffset] = useState(0)
@@ -281,14 +374,14 @@ export default function Journal() {
 
   // Fetch journal entry for this date
   const { data: entry } = useQuery({
-    queryKey: ['journal', date, accountId],
-    queryFn: () => getJournalEntry(date, accountId),
+    queryKey: ['journal', date],
+    queryFn: () => getJournalEntry(date),
   })
 
   // Used to highlight which days have entries in the picker.
   const { data: journalDates = [] } = useQuery({
-    queryKey: ['journal-dates', accountId],
-    queryFn: () => getJournalDates(accountId),
+    queryKey: ['journal-dates'],
+    queryFn: () => getJournalDates(),
   })
 
   // Calendar P&L coloring
@@ -300,8 +393,8 @@ export default function Journal() {
   // Left rail: most recent journal entries (for quick navigation).
   const recentDates = [...journalDates].slice(-6).reverse()
   const { data: recentEntries = [] } = useQuery({
-    queryKey: ['journal-recent', accountId, recentDates],
-    queryFn: async () => Promise.all(recentDates.map(d => getJournalEntry(d, accountId))).then(arr => arr.filter(Boolean)),
+    queryKey: ['journal-recent', recentDates],
+    queryFn: async () => Promise.all(recentDates.map(d => getJournalEntry(d))).then(arr => arr.filter(Boolean)),
     enabled: recentDates.length > 0,
   })
 
@@ -314,7 +407,7 @@ export default function Journal() {
   const dayTrades = allTrades.filter(t => t.date === date)
   const dayPnl = dayTrades.reduce((sum, t) => sum + (t.total_pnl ?? 0), 0)
 
-  // Sync entry into form state whenever date/account changes
+  // Sync entry into form state whenever date/entry changes
   useEffect(() => {
     if (entry) {
       setForm({
@@ -323,12 +416,16 @@ export default function Journal() {
         to_improve: entry.to_improve ?? '',
         mood:       entry.mood       ?? null,
         flagged:    entry.flagged    ?? false,
+        tags:       entry.tags       ?? [],
       })
     } else {
-      setForm({ pre_market: '', went_well: '', to_improve: '', mood: null, flagged: false })
+      setForm({ pre_market: '', went_well: '', to_improve: '', mood: null, flagged: false, tags: [] })
     }
     setSaved(false)
-  }, [entry, date, accountId])
+    // View mode: past dates always view; today with existing entry → view; today with no entry → edit
+    const isPast = date < today
+    setViewMode(isPast || (date === today && !!entry))
+  }, [entry, date])
 
   const mutation = useMutation({
     mutationFn: (data) => upsertJournalEntry(data),
@@ -342,7 +439,7 @@ export default function Journal() {
   const flagMutation = useMutation({
     mutationFn: (data) => upsertJournalEntry(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['journal', date, accountId] })
+      queryClient.invalidateQueries({ queryKey: ['journal', date] })
     },
   })
 
@@ -350,7 +447,7 @@ export default function Journal() {
     mutationFn: (id) => deleteJournalEntry(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['journal'] })
-      queryClient.invalidateQueries({ queryKey: ['journal-dates', accountId] })
+      queryClient.invalidateQueries({ queryKey: ['journal-dates'] })
       queryClient.invalidateQueries({ queryKey: ['journal-search'] })
       setDate(today)
     },
@@ -363,13 +460,13 @@ export default function Journal() {
   }
 
   function handleSave() {
-    mutation.mutate({ date, account_id: accountId, ...form })
+    mutation.mutate({ date, ...form })
   }
 
   function toggleFlag() {
     const next = !form.flagged
     setForm(f => ({ ...f, flagged: next }))
-    flagMutation.mutate({ date, account_id: accountId, ...form, flagged: next })
+    flagMutation.mutate({ date, ...form, flagged: next })
   }
 
   function shift(days) {
@@ -492,13 +589,12 @@ export default function Journal() {
 
           {/* Mood filter chips */}
           <div className="flex flex-wrap gap-1 mb-2">
-            {MOODS.map(m => (
+            {moods.map(m => (
               <button
                 key={m.value}
                 onClick={() => setSearchMood(prev => prev === m.value ? null : m.value)}
-                className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest border transition-colors ${
-                  searchMood === m.value ? m.cls : 'border-border text-muted-foreground/50 hover:border-muted-foreground'
-                }`}
+                className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest border transition-colors"
+                style={searchMood === m.value ? getMoodStyle(m.color) : {}}
               >
                 {m.label}
               </button>
@@ -513,6 +609,25 @@ export default function Journal() {
             </button>
           </div>
 
+          {/* Tag filter chips */}
+          {allTags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-2">
+              {allTags.map(t => (
+                <button
+                  key={t}
+                  onClick={() => setSearchTag(prev => prev === t ? null : t)}
+                  className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest border transition-colors ${
+                    searchTag === t
+                      ? 'border-primary/50 bg-primary/10 text-primary'
+                      : 'border-border text-muted-foreground/50 hover:border-muted-foreground'
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Results */}
           <div className="flex flex-col gap-1.5 overflow-y-auto pr-1 min-h-0">
             {(() => {
@@ -523,7 +638,7 @@ export default function Journal() {
                 </p>
               )
               return entries.map(j => {
-                const moodMeta = j.mood ? MOODS.find(m => m.value === j.mood) : null
+                const moodMeta = j.mood ? moods.find(m => m.value === j.mood) : null
                 const selected = j.date === date
                 return (
                   <button
@@ -535,12 +650,19 @@ export default function Journal() {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="text-[11px] font-mono text-muted-foreground truncate">{j.date}</div>
-                        {moodMeta && (
-                          <div className={`mt-1 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 ${moodMeta.cls}`}>
-                            {moodMeta.label}
-                          </div>
-                        )}
+                        <div className="text-xs font-mono text-muted-foreground truncate">{j.date}</div>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {moodMeta && (
+                            <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 border" style={getMoodStyle(moodMeta.color)}>
+                              {moodMeta.label}
+                            </span>
+                          )}
+                          {j.tags?.map(tag => (
+                            <span key={tag} className="inline-flex items-center text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 border border-primary/30 bg-primary/10 text-primary">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                       {j.flagged && <Flag className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
                     </div>
@@ -576,84 +698,132 @@ export default function Journal() {
               >
                 <Trash2 className="w-4 h-4" />
               </button>
-            </div>
-          </div>
-
-          {/* Pre-market */}
-          <div className="border border-border bg-card p-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">
-              Pre-Market
-            </p>
-
-            {/* Mood chips */}
-            <div className="flex flex-wrap gap-2 mb-3">
-              {MOODS.map(m => (
+              {entry && (
                 <button
-                  key={m.value}
-                  onClick={() => setForm(f => ({ ...f, mood: f.mood === m.value ? null : m.value }))}
-                  className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest border transition-colors ${
-                    form.mood === m.value
-                      ? m.cls
-                      : 'border-border text-muted-foreground hover:border-muted-foreground'
-                  }`}
+                  type="button"
+                  onClick={() => setViewMode(v => !v)}
+                  title={viewMode ? 'Edit entry' : 'View entry'}
+                  className="p-1.5 text-muted-foreground/60 hover:text-foreground transition-colors"
                 >
-                  {m.label}
+                  {viewMode ? <Pencil className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
-              ))}
-            </div>
-
-            <textarea
-              value={form.pre_market}
-              onChange={e => setForm(f => ({ ...f, pre_market: e.target.value }))}
-              placeholder="Bias, key levels, news catalysts, plan for the session..."
-              rows={10}
-              className="w-full bg-muted/20 border border-border p-3 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none focus:border-primary transition-colors font-mono"
-            />
-          </div>
-
-          {/* Screenshots */}
-          <JournalImages date={date} accountId={accountId} />
-
-          {/* Post-market */}
-          <div className="border border-border bg-card p-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">
-              Post-Market Reflection
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-[10px] font-bold text-green-400/80 mb-1.5">What went well</p>
-                <textarea
-                  value={form.went_well}
-                  onChange={e => setForm(f => ({ ...f, went_well: e.target.value }))}
-                  placeholder="Good entries, discipline, pattern recognition..."
-                  rows={9}
-                  className="w-full bg-muted/20 border border-border p-3 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none focus:border-green-500/50 transition-colors font-mono"
-                />
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-red-400/80 mb-1.5">To improve</p>
-                <textarea
-                  value={form.to_improve}
-                  onChange={e => setForm(f => ({ ...f, to_improve: e.target.value }))}
-                  placeholder="Mistakes, emotional triggers, missed setups..."
-                  rows={9}
-                  className="w-full bg-muted/20 border border-border p-3 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none focus:border-red-500/50 transition-colors font-mono"
-                />
-              </div>
+              )}
             </div>
           </div>
 
-          {/* Save */}
-          <div className="flex justify-end">
-            <button
-              onClick={handleSave}
-              disabled={mutation.isPending}
-              className="flex items-center gap-2 px-5 py-2 bg-primary text-primary-foreground text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-opacity disabled:opacity-50"
-            >
-              <Save className="w-3.5 h-3.5" />
-              {saved ? 'Saved!' : mutation.isPending ? 'Saving...' : 'Save'}
-            </button>
-          </div>
+          {viewMode && entry ? (
+            /* ── View mode ── */
+            <>
+              <div className="border border-border bg-card p-4 space-y-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Pre-Market</p>
+                <div className="flex flex-wrap gap-2">
+                  {form.mood && (() => { const m = moods.find(x => x.value === form.mood); return m ? (
+                    <span className="px-3 py-1 text-[10px] font-bold uppercase tracking-widest border" style={getMoodStyle(m.color)}>{m.label}</span>
+                  ) : null })()}
+                  {form.tags.map(t => (
+                    <span key={t} className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest border border-primary/30 bg-primary/10 text-primary">{t}</span>
+                  ))}
+                </div>
+                {form.pre_market
+                  ? <p className="text-base text-foreground font-mono whitespace-pre-wrap leading-relaxed">{form.pre_market}</p>
+                  : <p className="text-xs text-muted-foreground/40 italic">No pre-market notes</p>
+                }
+              </div>
+
+              <JournalImages date={date} />
+
+              <div className="border border-border bg-card p-4 space-y-3">
+                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Post-Market Reflection</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-bold text-green-400/80">What went well</p>
+                    {form.went_well
+                      ? <p className="text-base text-foreground font-mono whitespace-pre-wrap leading-relaxed">{form.went_well}</p>
+                      : <p className="text-sm text-muted-foreground/40 italic">Nothing noted</p>
+                    }
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-bold text-red-400/80">To improve</p>
+                    {form.to_improve
+                      ? <p className="text-base text-foreground font-mono whitespace-pre-wrap leading-relaxed">{form.to_improve}</p>
+                      : <p className="text-sm text-muted-foreground/40 italic">Nothing noted</p>
+                    }
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            /* ── Edit mode ── */
+            <>
+              <div className="border border-border bg-card p-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Pre-Market</p>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {moods.map(m => (
+                    <button
+                      key={m.value}
+                      onClick={() => setForm(f => ({ ...f, mood: f.mood === m.value ? null : m.value }))}
+                      className="px-3 py-1 text-[10px] font-bold uppercase tracking-widest border transition-colors"
+                      style={form.mood === m.value ? getMoodStyle(m.color) : {}}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="mb-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                    <Tag className="w-3 h-3" /> Tags
+                  </p>
+                  <TagInput value={form.tags} onChange={tags => setForm(f => ({ ...f, tags }))} suggestions={allTags} />
+                </div>
+                <textarea
+                  value={form.pre_market}
+                  onChange={e => setForm(f => ({ ...f, pre_market: e.target.value }))}
+                  placeholder="Bias, key levels, news catalysts, plan for the session..."
+                  rows={10}
+                  className="w-full bg-muted/20 border border-border p-3 text-base text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none focus:border-primary transition-colors font-mono"
+                />
+              </div>
+
+              <JournalImages date={date} />
+
+              <div className="border border-border bg-card p-4">
+                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">Post-Market Reflection</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs font-bold text-green-400/80 mb-1.5">What went well</p>
+                    <textarea
+                      value={form.went_well}
+                      onChange={e => setForm(f => ({ ...f, went_well: e.target.value }))}
+                      placeholder="Good entries, discipline, pattern recognition..."
+                      rows={9}
+                      className="w-full bg-muted/20 border border-border p-3 text-base text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none focus:border-green-500/50 transition-colors font-mono"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-red-400/80 mb-1.5">To improve</p>
+                    <textarea
+                      value={form.to_improve}
+                      onChange={e => setForm(f => ({ ...f, to_improve: e.target.value }))}
+                      placeholder="Mistakes, emotional triggers, missed setups..."
+                      rows={9}
+                      className="w-full bg-muted/20 border border-border p-3 text-base text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none focus:border-red-500/50 transition-colors font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  onClick={handleSave}
+                  disabled={mutation.isPending}
+                  className="flex items-center gap-2 px-5 py-2 bg-primary text-primary-foreground text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {saved ? 'Saved!' : mutation.isPending ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right: trades for the day */}
@@ -716,7 +886,6 @@ export default function Journal() {
 
       {trashOpen && (
         <JournalTrash
-          accountId={accountId}
           onClose={() => setTrashOpen(false)}
           onRestore={() => setTrashOpen(false)}
         />

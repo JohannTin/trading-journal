@@ -96,41 +96,34 @@ export const deleteAccount = (id, action, to) => {
 }
 
 // ── Journal ───────────────────────────────────────────────────────────────────
-export const getJournalEntry = (date, accountId) => {
-  const params = new URLSearchParams({ date })
-  if (accountId != null) params.set('account_id', accountId)
-  return request('GET', `/journal?${params}`)
-}
+export const getJournalEntry = (date) =>
+  request('GET', `/journal?date=${encodeURIComponent(date)}`)
 
-export const getJournalDates = (accountId) => {
-  const qs = accountId != null ? `?account_id=${accountId}` : ''
-  return request('GET', `/journal/dates${qs}`)
-}
+export const getJournalDates = () =>
+  request('GET', '/journal/dates')
 
 export const upsertJournalEntry = (payload) => request('PUT', '/journal', payload)
 
-export const searchJournalEntries = ({ q, mood, flagged, accountId } = {}) => {
+export const getJournalTags = () =>
+  request('GET', '/journal/tags')
+
+export const searchJournalEntries = ({ q, mood, tag, flagged } = {}) => {
   const params = new URLSearchParams()
   if (q) params.set('q', q)
   if (mood) params.set('mood', mood)
+  if (tag) params.set('tag', tag)
   if (flagged != null) params.set('flagged', flagged ? '1' : '0')
-  if (accountId != null) params.set('account_id', accountId)
   const qs = params.toString()
   return request('GET', `/journal/search${qs ? `?${qs}` : ''}`)
 }
 
-export const getJournalImages = (date, accountId) => {
-  const params = new URLSearchParams({ date })
-  if (accountId != null) params.set('account_id', accountId)
-  return request('GET', `/journal/images?${params}`)
-}
+export const getJournalImages = (date) =>
+  request('GET', `/journal/images?date=${encodeURIComponent(date)}`)
 
-export async function uploadJournalImage(date, accountId, file) {
-  const params = new URLSearchParams({ date })
-  if (accountId != null) params.set('account_id', accountId)
+export async function uploadJournalImage(date, file) {
   const form = new FormData()
   form.append('file', file)
-  const res = await fetch(`${BASE}/journal/images?${params}`, { method: 'POST', body: form })
+  const res = await fetch(`${BASE}/journal/images?date=${encodeURIComponent(date)}`, { method: 'POST', body: form })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(detailToMessage(err.detail) || 'Upload failed')
@@ -142,10 +135,8 @@ export const deleteJournalImage = (id) => request('DELETE', `/journal/images/${i
 
 export const deleteJournalEntry = (id) => request('DELETE', `/journal/${id}`)
 
-export const getDeletedJournalEntries = (accountId) => {
-  const qs = accountId != null ? `?account_id=${accountId}` : ''
-  return request('GET', `/journal/deleted${qs}`)
-}
+export const getDeletedJournalEntries = () =>
+  request('GET', '/journal/deleted')
 
 export const restoreJournalEntry = (id) => request('PATCH', `/journal/${id}/restore`)
 
@@ -160,8 +151,8 @@ export const deleteChartDay = (ticker, date) =>
 
 export const getAvailableCharts = () => request('GET', '/charts/available')
 
-export const getYahooFallback = (ticker, start, end) =>
-  request('GET', `/charts/yahoo/${encodeURIComponent(ticker)}?start=${start}&end=${end}`)
+export const getYahooFallback = (ticker, start, end, interval = '1m') =>
+  request('GET', `/charts/yahoo/${encodeURIComponent(ticker)}?start=${start}&end=${end}&interval=${interval}`)
 
 export const saveYahooDay = (ticker, date) =>
   request('POST', `/charts/yahoo/save-day?ticker=${encodeURIComponent(ticker)}&date=${encodeURIComponent(date)}`)

@@ -236,11 +236,12 @@ def _run_init():
                 if "duplicate column name" not in str(e).lower():
                     raise
 
-    # Migrate: add flagged + soft-delete support for journal entries
+    # Migrate: add flagged + soft-delete + tags support for journal entries
     journal_cols = _table_columns(conn, "journal_entries")
     for col, ddl in [
         ("flagged",    "INTEGER NOT NULL DEFAULT 0"),
         ("deleted_at", "TEXT"),
+        ("tags",       "TEXT NOT NULL DEFAULT '[]'"),
     ]:
         if col not in journal_cols:
             try:

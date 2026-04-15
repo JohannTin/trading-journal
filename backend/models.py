@@ -1,18 +1,18 @@
 import re
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional
+from typing import Optional, List
 
 
 # ── Journal ──────────────────────────────────────────────────────────────────
 
 class JournalUpsert(BaseModel):
     date: str
-    account_id: Optional[int] = None
     pre_market: Optional[str] = None
     went_well:  Optional[str] = None
     to_improve: Optional[str] = None
     mood:       Optional[str] = None  # 'focused' | 'distracted' | 'revenge' | 'fomo' | 'hesitant'
     flagged:    bool = False
+    tags:       List[str] = []
 
 class JournalOut(BaseModel):
     id: int
@@ -23,6 +23,7 @@ class JournalOut(BaseModel):
     to_improve: Optional[str]
     mood:       Optional[str]
     flagged:    bool
+    tags:       List[str] = []
     updated_at: str
     deleted_at: Optional[str] = None
 

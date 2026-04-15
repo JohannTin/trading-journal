@@ -717,7 +717,7 @@ export default function TradeLog() {
     const h = e => {
       if (e.key === 'n' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) {
         e.preventDefault()
-        setModal({ mode: 'trade' })
+        setModal({ mode: 'trade', defaultTicker: lastTicker })
       }
     }
     window.addEventListener('keydown', h)
@@ -726,6 +726,14 @@ export default function TradeLog() {
 
   const tickers    = useMemo(() => [...new Set(trades.map(t => t.ticker))].sort(),           [trades])
   const strategies = useMemo(() => [...new Set(trades.map(t => t.strategy).filter(Boolean))].sort(), [trades])
+
+  const lastTicker = useMemo(() => {
+    if (!trades.length) return 'SPY'
+    const today = isoToday()
+    const todayTrades = trades.filter(t => t.date === today)
+    const pool = todayTrades.length ? todayTrades : trades
+    return [...pool].sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))[0].ticker
+  }, [trades])
 
   // Date range cutoff
   const dateFrom_ = useMemo(() => {
@@ -838,7 +846,7 @@ export default function TradeLog() {
             <button onClick={() => setBinOpen(true)} title="Trash" className="p-2 border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
               <Trash2 className="w-4 h-4" />
             </button>
-            <button onClick={() => setModal({ mode: 'trade' })} className={`${BTN_PRIMARY} flex items-center gap-2 px-4 py-2`}>
+            <button onClick={() => setModal({ mode: 'trade', defaultTicker: lastTicker })} className={`${BTN_PRIMARY} flex items-center gap-2 px-4 py-2`}>
               <Plus className="w-4 h-4" /> New Trade
             </button>
           </div>
@@ -944,7 +952,7 @@ export default function TradeLog() {
           <div className={`${CARD} text-center py-20`}>
             <p className="text-sm text-muted-foreground">No trades found.</p>
             {statusFilter === 'All' && !tickerFilter && !stratFilter && typeFilter === 'All' && dateRange === 'All time' && (
-              <button onClick={() => setModal({ mode: 'trade' })} className="mt-3 text-primary text-sm hover:underline">Add your first trade</button>
+              <button onClick={() => setModal({ mode: 'trade', defaultTicker: lastTicker })} className="mt-3 text-primary text-sm hover:underline">Add your first trade</button>
             )}
           </div>
         ) : groupByDate ? (
@@ -968,7 +976,7 @@ export default function TradeLog() {
         )}
       </div>
 
-      {modal && <TradeModal mode={modal.mode} trade={modal.trade} exit={modal.exit} onClose={() => setModal(null)} />}
+      {modal && <TradeModal mode={modal.mode} trade={modal.trade} exit={modal.exit} defaultTicker={modal.defaultTicker} onClose={() => setModal(null)} />}
       {chartTrade && (
         <TradeChart trade={chartTrade} defaultEditOpen={chartEditOpen}
           onClose={() => { setChartTrade(null); setChartEditOpen(false) }} />

@@ -6,12 +6,12 @@
 
 @layer base {
   :root {
-    --background: 220 28% 97%;
+    --background: 240 5% 96%;
     --foreground: 228 40% 10%;
-    --card: 0 0% 100%;
+    --card: 240 8% 98%;
     --card-foreground: 228 40% 10%;
     --border: 220 18% 88%;
-    --primary: 40 78% 36%;
+    --primary: 43 80% 38%;
     --primary-foreground: 0 0% 100%;
     --muted: 220 18% 94%;
     --muted-foreground: 220 14% 46%;
@@ -37,6 +37,7 @@
 }
 
 @layer base {
+  html { font-size: 110%; }
   * { @apply border-border; }
   body {
     @apply bg-background text-foreground;
