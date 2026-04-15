@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { createChart, ColorType, CrosshairMode, LineStyle, PriceScaleMode } from 'lightweight-charts'
+import { createChart, ColorType, CrosshairMode, LineStyle, PriceScaleMode, TickMarkType } from 'lightweight-charts'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getChartData, getYahooFallback, uploadChartCsv, saveYahooDay, deleteChartDay, updateTrade, addExit, updateExit, deleteExit, getTrades } from '../api'
 import { X, Upload, AlertCircle, BarChart2, ChevronDown, ChevronUp, Pencil, Trash2, Plus, Check, Copy } from 'lucide-react'
@@ -11,6 +11,7 @@ import { getTimezone } from '../timezone'
 const TF_OPTS = [
   { label: '1m', min: 1 }, { label: '5m', min: 5 },
   { label: '15m', min: 15 }, { label: '30m', min: 30 }, { label: '1H', min: 60 },
+  { label: '4H', min: 240 }, { label: '1D', min: 1440 },
 ]
 
 function aggregate(candles, minutes) {
@@ -75,6 +76,19 @@ function nearestTs(target, candles) {
 function tzTimeLabel(ts) {
   return new Date(ts * 1000).toLocaleTimeString('en-US', { timeZone: getTimezone(), hour: '2-digit', minute: '2-digit', hour12: false })
 }
+function tickFormatter(ts, type) {
+  const d = new Date(ts * 1000)
+  if (type === TickMarkType.Year) {
+    return d.toLocaleDateString('en-US', { timeZone: getTimezone(), year: 'numeric' })
+  }
+  if (type === TickMarkType.Month) {
+    return d.toLocaleDateString('en-US', { timeZone: getTimezone(), month: 'short' })
+  }
+  if (type === TickMarkType.DayOfMonth) {
+    return d.toLocaleDateString('en-US', { timeZone: getTimezone(), month: 'short', day: 'numeric' })
+  }
+  return tzTimeLabel(ts)
+}
 
 function parseNoteSections(value, exitCount = 0) {
   const text = (value ?? '').replace(/\r/g, '')
@@ -128,7 +142,7 @@ function chartOpts(hideTime = false) {
     crosshair: { mode: CrosshairMode.Normal },
     handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true },
     handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
-    timeScale: { borderColor: BORD, timeVisible: true, secondsVisible: false, visible: !hideTime, tickMarkFormatter: ts => tzTimeLabel(ts) },
+    timeScale: { borderColor: BORD, timeVisible: true, secondsVisible: false, visible: !hideTime, tickMarkFormatter: (ts, type) => tickFormatter(ts, type) },
     rightPriceScale: { borderColor: BORD },
   }
 }
@@ -544,6 +558,36 @@ export default function TradeChart({ trade: initialTrade, onClose, defaultEditOp
   }, [inds])
 
   const tradeDateBase = Math.floor(new Date(trade.date + 'T00:00:00Z').getTime() / 1000)
+  const tfMin = TF_OPTS[tfIdx].min
+
+  // Derive yahoo fetch range + interval from selected timeframe
+  const { yahooStart, yahooEnd, yahooInterval } = (() => {
+    const now = Math.floor(Date.now() / 1000)
+    const eod = tradeDateBase + 21 * 3600  // trade date ~5pm ET
+    if (tfMin >= 1440) {
+      // 1D — 360 days of daily bars
+      return { yahooStart: tradeDateBase - 360 * 86400, yahooEnd: now, yahooInterval: '1d' }
+    } else if (tfMin >= 240) {
+      // 4H — 180 days of 1h bars (aggregated to 4h in frontend)
+      return { yahooStart: tradeDateBase - 180 * 86400, yahooEnd: now, yahooInterval: '1h' }
+    } else if (tfMin >= 60) {
+      // 1H — 180 days of 1h bars
+      return { yahooStart: tradeDateBase - 180 * 86400, yahooEnd: now, yahooInterval: '1h' }
+    } else if (tfMin >= 30) {
+      // 30m — 60 days of 30m bars
+      return { yahooStart: tradeDateBase - 60 * 86400, yahooEnd: now, yahooInterval: '30m' }
+    } else if (tfMin >= 15) {
+      // 15m — 30 days of 15m bars
+      return { yahooStart: tradeDateBase - 30 * 86400, yahooEnd: now, yahooInterval: '15m' }
+    } else if (tfMin >= 5) {
+      // 5m — 14 days of 5m bars
+      return { yahooStart: tradeDateBase - 14 * 86400, yahooEnd: now, yahooInterval: '5m' }
+    } else {
+      // 1m — 3-day window around trade date
+      return { yahooStart: tradeDateBase - 2 * 86400 + 13 * 3600, yahooEnd: eod, yahooInterval: '1m' }
+    }
+  })()
+
   const startTs = tradeDateBase - 86400 + 13 * 3600
   const endTs   = tradeDateBase + 21 * 3600
 
@@ -552,8 +596,8 @@ export default function TradeChart({ trade: initialTrade, onClose, defaultEditOp
     queryFn:  () => getChartData(trade.ticker, startTs, endTs),
   })
   const { data: yahoo = [], isLoading: loadingYahoo } = useQuery({
-    queryKey: ['chart-yahoo', trade.ticker, trade.date],
-    queryFn:  () => getYahooFallback(trade.ticker, startTs, endTs),
+    queryKey: ['chart-yahoo', trade.ticker, trade.date, yahooInterval],
+    queryFn:  () => getYahooFallback(trade.ticker, yahooStart, yahooEnd, yahooInterval),
     enabled:  !loadingStored && stored.length === 0,
   })
 

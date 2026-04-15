@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createTrade, updateTrade, addExit, updateExit, getStrategies } from '../api'
 import { X, ChevronDown } from 'lucide-react'
@@ -55,6 +55,25 @@ function invalidate(qc) {
   qc.invalidateQueries({ queryKey: ['trades'] })
   qc.invalidateQueries({ queryKey: ['stats-overview'] })
   qc.invalidateQueries({ queryKey: ['stats-calendar'] })
+}
+
+function AutoTextarea({ className, value, onChange }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = el.scrollHeight + 'px'
+  }, [value])
+  return (
+    <textarea
+      ref={ref}
+      className={`${className} resize-none overflow-hidden`}
+      rows={1}
+      value={value}
+      onChange={onChange}
+    />
+  )
 }
 
 // ── Add / Edit Exit ───────────────────────────────────────────────────────────
@@ -157,8 +176,14 @@ function ExitForm({ trade, exit, onClose }) {
   )
 }
 
+function extractGeneralNotes(raw) {
+  if (!raw) return ''
+  const match = raw.match(/(?:^|\n)Notes?:\s*\n([\s\S]*)$/i)
+  return match ? match[1].trim() : raw
+}
+
 // ── New / Edit Trade ──────────────────────────────────────────────────────────
-function TradeForm({ trade, onClose }) {
+function TradeForm({ trade, onClose, defaultTicker = 'SPY' }) {
   const qc = useQueryClient()
   const { accountId, accounts } = useAccount()
   const { data: strategies = [] } = useQuery({ queryKey: ['strategies'], queryFn: getStrategies })
@@ -169,14 +194,14 @@ function TradeForm({ trade, onClose }) {
     date:        isEdit ? trade.date           : today,
     time:        isEdit ? trade.time           : nowTime(),
     dte:         isEdit ? String(trade.dte)    : '0',
-    ticker:      isEdit ? trade.ticker         : 'SPY',
+    ticker:      isEdit ? trade.ticker         : defaultTicker,
     option_type: isEdit ? trade.option_type    : 'Call',
     strike:      isEdit ? String(trade.strike) : '',
     expiry:      isEdit ? trade.expiry         : today,
     qty:         isEdit ? String(trade.qty)    : '',
     fill:        isEdit ? String(trade.fill)   : '',
     source:      isEdit ? (trade.source   ?? '') : '',
-    notes:       isEdit ? (trade.notes    ?? '') : '',
+    notes:       isEdit ? extractGeneralNotes(trade.notes) : '',
     strategy:    isEdit ? (trade.strategy ?? '') : '',
     account_id:  isEdit ? (trade.account_id ?? accountId) : accountId,
   })
@@ -308,14 +333,15 @@ function TradeForm({ trade, onClose }) {
         </datalist>
       </Field>
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Source (optional)">
-          <input className={INPUT} value={form.source} onChange={set('source')} />
-        </Field>
+      <Field label="Source (optional)">
+        <input className={INPUT} value={form.source} onChange={set('source')} />
+      </Field>
+
+      {isEdit && (
         <Field label="Notes (optional)">
-          <input className={INPUT} value={form.notes} onChange={set('notes')} />
+          <AutoTextarea className={INPUT} value={form.notes} onChange={set('notes')} />
         </Field>
-      </div>
+      )}
 
       {mutation.error && <p className="text-xs text-rose-400">{mutation.error.message}</p>}
 
@@ -331,7 +357,7 @@ function TradeForm({ trade, onClose }) {
 }
 
 // ── Modal Shell ───────────────────────────────────────────────────────────────
-export default function TradeModal({ mode, trade, exit, onClose }) {
+export default function TradeModal({ mode, trade, exit, onClose, defaultTicker = 'SPY' }) {
   const title = { exit: 'Add Exit', 'edit-exit': 'Edit Exit', edit: 'Edit Trade', trade: 'New Trade' }[mode]
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -346,7 +372,7 @@ export default function TradeModal({ mode, trade, exit, onClose }) {
         {mode === 'exit' && <ExitForm trade={trade} exit={null} onClose={onClose} />}
         {mode === 'edit-exit' && <ExitForm trade={trade} exit={exit} onClose={onClose} />}
         {mode === 'edit' && <TradeForm trade={trade} onClose={onClose} />}
-        {mode === 'trade' && <TradeForm trade={null} onClose={onClose} />}
+        {mode === 'trade' && <TradeForm trade={null} defaultTicker={defaultTicker} onClose={onClose} />}
       </div>
     </div>
   )

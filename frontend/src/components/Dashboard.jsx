@@ -9,6 +9,13 @@ import TradeChart from './TradeChart'
 import { AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, TrendingUp } from 'lucide-react'
 import { CARD, SECTION_LABEL, BADGE_CALL, BADGE_PUT, pnlColor, fmt } from '../styles'
 
+function daysToExpiry(expiry) {
+  const today = new Date().toLocaleDateString('en-CA')
+  const [ey, em, ed] = expiry.split('-').map(Number)
+  const [ty, tm, td] = today.split('-').map(Number)
+  return Math.round((new Date(ey, em - 1, ed) - new Date(ty, tm - 1, td)) / 86400000)
+}
+
 function StatCell({ label, value, sub, color = 'text-foreground' }) {
   return (
     <div className="stat-cell flex flex-col gap-1 px-5 py-3 min-w-0 flex-1">
@@ -235,14 +242,21 @@ export default function Dashboard() {
             ) : (
               <div>
                 {openTrades.map((t) => (
-                  <div key={t.id} className="flex items-center justify-between px-4 py-2.5 border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className={t.option_type === 'Call' ? BADGE_CALL : BADGE_PUT}>{t.option_type[0]}</span>
-                      <span className="font-semibold text-foreground text-sm">{t.ticker}</span>
-                      <span className="font-mono text-xs text-muted-foreground">${t.strike}</span>
-                      <span className="text-xs text-muted-foreground">exp {t.expiry}</span>
-                    </div>
-                    <span className="font-mono text-xs text-muted-foreground shrink-0">{t.qty}× @${Number(t.fill).toFixed(2)}</span>
+                  <div key={t.id} className="flex items-center gap-2.5 px-4 py-2.5 border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                    <span className={t.option_type === 'Call' ? BADGE_CALL : BADGE_PUT}>{t.option_type[0]}</span>
+                    <span className="font-semibold text-foreground text-sm w-14 shrink-0">{t.ticker}</span>
+                    <span className="font-mono text-xs text-muted-foreground w-14 shrink-0">${t.strike}</span>
+                    <span className="text-xs flex-1">
+                      <span className="text-foreground">exp {t.expiry}</span>
+                      {' '}
+                      {(() => {
+                        const d = daysToExpiry(t.expiry)
+                        const cls = d <= 3 ? 'text-rose-400' : d <= 7 ? 'text-orange-400' : d <= 21 ? 'text-amber-400' : 'text-emerald-400'
+                        return <span className={`font-mono font-semibold ${cls}`}>({d}d)</span>
+                      })()}
+                    </span>
+                    <span className="font-mono text-xs text-muted-foreground w-20 text-right shrink-0">{t.qty}× ${Number(t.fill).toFixed(2)}</span>
+                    <span className="font-mono text-xs text-amber-400 w-16 text-right shrink-0">${Number(t.total_cost).toFixed(0)}</span>
                   </div>
                 ))}
               </div>
@@ -252,7 +266,7 @@ export default function Dashboard() {
 
         {/* Row 2 col 2 — Recent Closed (30%) */}
         <div className={`${CARD} flex flex-col max-h-52`}>
-          <div className="px-4 py-2.5 border-b border-border shrink-0">
+          <div className="px-4 py-2.5 border-b border-border shrink-0 flex items-center justify-between">
             <span className={SECTION_LABEL}>Recent Closed</span>
           </div>
           <div className="overflow-y-auto">

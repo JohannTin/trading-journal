@@ -417,14 +417,15 @@ def available_chart_data():
 # ── Yahoo Finance fallback ────────────────────────────────────────────────────
 
 @router.get("/yahoo/{ticker}")
-def yahoo_fallback(ticker: str, start: int, end: int):
+def yahoo_fallback(ticker: str, start: int, end: int, interval: str = "1m"):
     """
-    Proxy 1-min OHLCV from Yahoo Finance for the given Unix timestamp window.
+    Proxy OHLCV from Yahoo Finance for the given Unix timestamp window.
+    interval: 1m (≤7d), 1h (≤730d), 1d (any range)
     Returns the same shape as /data so the frontend can use it transparently.
     """
     url = (
         f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker.upper()}"
-        f"?interval=1m&period1={start}&period2={end}"
+        f"?interval={interval}&period1={start}&period2={end}"
     )
     return _fetch_yahoo_candles(url)
 
