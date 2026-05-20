@@ -49,6 +49,7 @@ class ExitCreate(BaseModel):
     time: str
     qty: int = Field(gt=0)
     price: float = Field(gt=0)
+    commission: Optional[float] = 0
 
 
 class ExitOut(BaseModel):
@@ -60,6 +61,7 @@ class ExitOut(BaseModel):
     price: float
     pnl: float
     pct: float
+    commission: float = 0
     macd: Optional[float] = None
     macd_signal: Optional[float] = None
     macd_hist: Optional[float] = None
@@ -71,7 +73,7 @@ class ExitOut(BaseModel):
 # ── Trades ───────────────────────────────────────────────────────────────────
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_TIME_RE = re.compile(r"^\d{2}:\d{2}$")
+_TIME_RE = re.compile(r"^\d{2}:\d{2}(:\d{2})?$")
 
 
 class TradeCreate(BaseModel):
@@ -90,6 +92,7 @@ class TradeCreate(BaseModel):
     chart_link: Optional[str] = None
     strategy: Optional[str] = None
     account_id: Optional[int] = None
+    commission: Optional[float] = 0
 
     @field_validator("date", "expiry")
     @classmethod
@@ -147,6 +150,7 @@ class TradeOut(BaseModel):
     status: str
     flagged: bool = False
     account_id: Optional[int] = None
+    commission: float = 0
     total_pnl: float
     entry_macd: Optional[float] = None
     entry_macd_signal: Optional[float] = None

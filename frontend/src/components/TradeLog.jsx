@@ -178,6 +178,7 @@ function ExitPill({ exit, onEdit, onDelete }) {
     <span className={`inline-flex items-center gap-1.5 border px-2 py-0.5 text-xs font-medium ${pos ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-500'}`}>
       <span className="font-mono">{exit.qty}×@${exit.price.toFixed(2)}</span>
       <span className="opacity-60 font-mono">{fmt(exit.pnl)} ({exit.pct >= 0 ? '+' : ''}{exit.pct.toFixed(0)}%)</span>
+      {exit.commission > 0 && <span className="opacity-60 font-mono">c${exit.commission.toFixed(2)}</span>}
       <span className="opacity-60 font-mono">H:{fmtMacd(exit.macd_hist)}</span>
       <span className="inline-flex items-center gap-0.5 ml-0.5 pl-1 border-l border-current/20">
         <button onClick={e => { e.stopPropagation(); onEdit(exit) }} className="opacity-40 hover:opacity-100 transition-opacity"><Pencil className="w-3 h-3" /></button>
@@ -284,8 +285,8 @@ function TradeCard({ trade, selected, onSelect, selectionMode, onAddExit, onEdit
         <span>Fill: <span className="font-mono text-foreground">${trade.fill}</span></span>
         <span>Qty: <span className="font-mono text-foreground">{trade.qty}</span></span>
         <span>Cost: <span className="font-mono text-foreground">${trade.total_cost.toFixed(2)}</span></span>
-        <span>Entry MACD H: <span className="font-mono text-foreground">{fmtMacd(trade.entry_macd_hist)}</span></span>
-        <span className={`font-bold text-[10px] tracking-widest uppercase ${trade.status === 'open' ? 'text-amber-400' : 'text-muted-foreground'}`}>{trade.status}</span>
+        {trade.commission > 0 && <span>Comm: <span className="font-mono text-foreground">${trade.commission.toFixed(2)}</span></span>}
+<span className={`font-bold text-[10px] tracking-widest uppercase ${trade.status === 'open' ? 'text-amber-400' : 'text-muted-foreground'}`}>{trade.status}</span>
       </div>
       <div className="space-y-1">
         <div className="flex justify-between text-xs text-muted-foreground">

@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/trades", tags=["trades"])
 _JOIN_SELECT = """
     t.id, t.date, t.time, t.dte, t.ticker, t.option_type, t.strike, t.expiry,
     t.qty, t.fill, t.total_cost, t.source, t.notes, t.chart_link, t.strategy,
-    t.status, t.flagged, t.account_id, t.total_pnl,
+    t.status, t.flagged, t.account_id, t.total_pnl, t.commission,
     t.entry_macd, t.entry_macd_signal, t.entry_macd_hist,
     e.id           AS e_id,
     e.trade_id     AS e_trade_id,
@@ -26,6 +26,7 @@ _JOIN_SELECT = """
     e.price        AS e_price,
     e.pnl          AS e_pnl,
     e.pct          AS e_pct,
+    e.commission   AS e_commission,
     e.exit_macd    AS e_exit_macd,
     e.exit_macd_signal AS e_exit_macd_signal,
     e.exit_macd_hist   AS e_exit_macd_hist,
@@ -51,6 +52,7 @@ def _exit_row_to_out(r) -> ExitOut:
         price=d["price"],
         pnl=d["pnl"],
         pct=d["pct"],
+        commission=d.get("commission") or 0,
         macd=d.get("exit_macd"),
         macd_signal=d.get("exit_macd_signal"),
         macd_hist=d.get("exit_macd_hist"),
@@ -90,6 +92,7 @@ def _row_to_trade(row, exits: list[ExitOut]) -> TradeOut:
         status=d.get("status", "open"),
         flagged=bool(d.get("flagged", 0)),
         account_id=d.get("account_id"),
+        commission=d.get("commission") or 0,
         total_pnl=d.get("total_pnl") or 0.0,
         entry_macd=d.get("entry_macd"),
         entry_macd_signal=d.get("entry_macd_signal"),
@@ -121,6 +124,7 @@ def _join_rows_to_trades(rows) -> list[TradeOut]:
                 price=d["e_price"],
                 pnl=d["e_pnl"],
                 pct=d["e_pct"],
+                commission=d.get("e_commission") or 0,
                 macd=d["e_exit_macd"],
                 macd_signal=d["e_exit_macd_signal"],
                 macd_hist=d["e_exit_macd_hist"],
@@ -169,7 +173,8 @@ def _recompute_all_exits(conn, trade_id: int):
     for r in rows:
         d = dict(r)
         x_ts = entry_ts(date_str, d["time"])
-        pnl  = (d["price"] - fill) * d["qty"] * 100
+        commission = d.get("commission") or 0
+        pnl  = (d["price"] - fill) * d["qty"] * 100 - commission
         pct  = ((d["price"] - fill) / fill) * 100
         macd = nearest_macd(conn, underlying, x_ts, start_ts, end_ts)
         mae, mfe, post = compute_mae_mfe(conn, opt_tk, underlying, e_ts, x_ts, fill, sess_end, t["option_type"])
@@ -184,12 +189,15 @@ def _recompute_all_exits(conn, trade_id: int):
              mae, mfe, post, d["id"]),
         )
 
-    # Update trade total_pnl
+    # Update trade total_pnl (subtract entry commission)
     total = conn.execute(
         "SELECT COALESCE(SUM(pnl), 0) FROM exits WHERE trade_id = ? AND deleted_at IS NULL",
         (trade_id,),
     ).fetchone()[0]
-    conn.execute("UPDATE trades SET total_pnl = ? WHERE id = ?", (round(total, 2), trade_id))
+    entry_commission = conn.execute(
+        "SELECT COALESCE(commission, 0) FROM trades WHERE id = ?", (trade_id,)
+    ).fetchone()[0]
+    conn.execute("UPDATE trades SET total_pnl = ? WHERE id = ?", (round(total - entry_commission, 2), trade_id))
 
 
 # ── Create ────────────────────────────────────────────────────────────────────
@@ -206,14 +214,14 @@ def create_trade(payload: TradeCreate):
         cur = conn.execute(
             """INSERT INTO trades
                (date, time, dte, ticker, option_type, strike, expiry,
-                qty, fill, total_cost, source, notes, chart_link, strategy, account_id)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                qty, fill, total_cost, source, notes, chart_link, strategy, account_id, commission)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 payload.date, payload.time, payload.dte, payload.ticker,
                 payload.option_type, payload.strike, payload.expiry,
                 payload.qty, payload.fill, payload.total_cost,
                 payload.source, payload.notes, payload.chart_link, payload.strategy,
-                account_id,
+                account_id, payload.commission or 0,
             ),
         )
         trade_id = cur.lastrowid
@@ -305,7 +313,7 @@ def get_trade(trade_id: int, session_end: str = Query("15:30")):
 def update_trade(trade_id: int, payload: dict[str, Any]):
     allowed = {"notes", "source", "chart_link", "strategy", "status", "flagged",
                "date", "time", "dte", "ticker", "option_type",
-               "strike", "expiry", "qty", "fill", "total_cost", "account_id"}
+               "strike", "expiry", "qty", "fill", "total_cost", "account_id", "commission"}
     updates = {k: v for k, v in payload.items() if k in allowed}
     if not updates:
         raise HTTPException(status_code=400, detail="No valid fields to update")

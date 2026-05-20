@@ -22,19 +22,27 @@ function nowTime() {
     timeZone: getTimezone(),
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
     hour12: false,
-  }).slice(0, 5)
+  }).slice(0, 8)
 }
 
 function nowDate() {
   return new Date().toLocaleDateString('en-CA', { timeZone: getTimezone() })
 }
 
-// Auto-inserts ":" — accepts "1450" → "14:50", "935" → "09:35", "14:50" unchanged
+// Auto-inserts ":" — accepts "145030" → "14:50:30", "1450" → "14:50", "935" → "09:35"
 function formatTime(raw) {
-  const digits = raw.replace(/\D/g, '').slice(0, 4)
+  const digits = raw.replace(/\D/g, '').slice(0, 6)
   if (digits.length <= 2) return digits
-  return digits.slice(0, 2) + ':' + digits.slice(2)
+  if (digits.length <= 4) return digits.slice(0, 2) + ':' + digits.slice(2)
+  return digits.slice(0, 2) + ':' + digits.slice(2, 4) + ':' + digits.slice(4)
+}
+
+// Ensures HH:MM:SS format — pads :00 seconds if time is HH:MM
+function withSeconds(t) {
+  if (!t) return t
+  return t.length === 5 ? t + ':00' : t
 }
 
 function addDays(dateStr, days) {
@@ -85,24 +93,26 @@ function ExitForm({ trade, exit, onClose }) {
     : trade.qty - trade.exits.reduce((s, e) => s + e.qty, 0)
 
   const [form, setForm] = useState({
-    date:  isEdit ? (exit.date ?? nowDate()) : nowDate(),
-    time:  isEdit ? exit.time                : nowTime(),
-    qty:   isEdit ? String(exit.qty)         : '',
-    price: isEdit ? String(exit.price)       : '',
+    date:       isEdit ? (exit.date ?? nowDate()) : nowDate(),
+    time:       isEdit ? exit.time                : nowTime(),
+    qty:        isEdit ? String(exit.qty)         : '',
+    price:      isEdit ? String(exit.price)       : '',
+    commission: isEdit ? String(exit.commission ?? '') : '',
     notes: '',
   })
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
   const previewPnl = form.price && form.qty
-    ? (parseFloat(form.price) - trade.fill) * parseInt(form.qty) * 100
+    ? (parseFloat(form.price) - trade.fill) * parseInt(form.qty) * 100 - parseFloat(form.commission || 0)
     : null
 
   const mutation = useMutation({
     mutationFn: async () => {
+      const commission = form.commission ? parseFloat(form.commission) : 0
       if (isEdit) {
-        return updateExit(exit.id, { date: form.date, time: formatTime(form.time), qty: parseInt(form.qty), price: parseFloat(form.price) })
+        return updateExit(exit.id, { date: form.date, time: withSeconds(formatTime(form.time)), qty: parseInt(form.qty), price: parseFloat(form.price), commission })
       }
-      await addExit({ trade_id: trade.id, date: form.date, time: formatTime(form.time), qty: parseInt(form.qty), price: parseFloat(form.price) })
+      await addExit({ trade_id: trade.id, date: form.date, time: withSeconds(formatTime(form.time)), qty: parseInt(form.qty), price: parseFloat(form.price), commission })
       if (form.notes.trim()) {
         const exitIndex = trade.exits.length + 1
         const section = `Exit ${exitIndex}:\n${form.notes.trim()}`
@@ -128,7 +138,7 @@ function ExitForm({ trade, exit, onClose }) {
         <Field label="Exit Date">
           <input className={INPUT} type="date" value={form.date} onChange={set('date')} />
         </Field>
-        <Field label="Time ET (HH:MM)">
+        <Field label="Time ET (HH:MM:SS)">
           <input className={INPUT} value={form.time} onChange={e => setForm(f => ({ ...f, time: formatTime(e.target.value) }))} />
         </Field>
       </div>
@@ -141,6 +151,10 @@ function ExitForm({ trade, exit, onClose }) {
           <input className={INPUT} type="number" step="0.01" value={form.price} onChange={set('price')} />
         </Field>
       </div>
+
+      <Field label="Commission (optional)">
+        <input className={INPUT} type="number" step="0.01" min="0" placeholder="0.00" value={form.commission} onChange={set('commission')} />
+      </Field>
 
       {previewPnl !== null && (
         <div className={`font-mono text-sm font-semibold text-center py-2.5 border ${
@@ -204,6 +218,7 @@ function TradeForm({ trade, onClose, defaultTicker = 'SPY' }) {
     notes:       isEdit ? extractGeneralNotes(trade.notes) : '',
     strategy:    isEdit ? (trade.strategy ?? '') : '',
     account_id:  isEdit ? (trade.account_id ?? accountId) : accountId,
+    commission:  isEdit ? (trade.commission ? String(trade.commission) : '') : '',
   })
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
@@ -229,7 +244,7 @@ function TradeForm({ trade, onClose, defaultTicker = 'SPY' }) {
   const mutation = useMutation({
     mutationFn: () => {
       const payload = {
-        date: form.date, time: formatTime(form.time), dte: parseInt(form.dte),
+        date: form.date, time: withSeconds(formatTime(form.time)), dte: parseInt(form.dte),
         ticker: form.ticker.toUpperCase(), option_type: form.option_type,
         strike: parseFloat(form.strike), expiry: form.expiry,
         qty: parseInt(form.qty), fill: parseFloat(form.fill),
@@ -238,6 +253,7 @@ function TradeForm({ trade, onClose, defaultTicker = 'SPY' }) {
         notes:      form.notes    || null,
         strategy:   form.strategy || null,
         account_id: form.account_id,
+        commission: form.commission ? parseFloat(form.commission) : 0,
       }
       return isEdit ? updateTrade(trade.id, payload) : createTrade(payload)
     },
@@ -252,7 +268,7 @@ function TradeForm({ trade, onClose, defaultTicker = 'SPY' }) {
         <Field label="Date">
           <input className={INPUT} type="date" value={form.date} onChange={handleDate} />
         </Field>
-        <Field label="Time ET (HH:MM)">
+        <Field label="Time ET (HH:MM:SS)">
           <input className={INPUT} value={form.time} onChange={e => setForm(f => ({ ...f, time: formatTime(e.target.value) }))} />
         </Field>
       </div>
@@ -297,9 +313,16 @@ function TradeForm({ trade, onClose, defaultTicker = 'SPY' }) {
         </Field>
       </div>
 
+      <Field label="Entry Commission (optional)">
+        <input className={INPUT} type="number" step="0.01" min="0" placeholder="0.00" value={form.commission} onChange={set('commission')} />
+      </Field>
+
       {totalCost > 0 && (
         <p className="text-xs text-muted-foreground">
           Total cost: <span className="font-mono text-foreground font-semibold">${totalCost.toFixed(2)}</span>
+          {form.commission && parseFloat(form.commission) > 0 && (
+            <> · Commission: <span className="font-mono text-foreground font-semibold">${parseFloat(form.commission).toFixed(2)}</span></>
+          )}
         </p>
       )}
 
@@ -337,11 +360,9 @@ function TradeForm({ trade, onClose, defaultTicker = 'SPY' }) {
         <input className={INPUT} value={form.source} onChange={set('source')} />
       </Field>
 
-      {isEdit && (
-        <Field label="Notes (optional)">
-          <AutoTextarea className={INPUT} value={form.notes} onChange={set('notes')} />
-        </Field>
-      )}
+      <Field label="Notes (optional)">
+        <AutoTextarea className={INPUT} value={form.notes} onChange={set('notes')} />
+      </Field>
 
       {mutation.error && <p className="text-xs text-rose-400">{mutation.error.message}</p>}
 
