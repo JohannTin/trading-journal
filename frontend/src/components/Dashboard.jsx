@@ -126,11 +126,13 @@ export default function Dashboard() {
   const mPfValue   = monthStats.profitFactor > 0 ? monthStats.profitFactor : null
 
   return (
-    <div className="h-full overflow-hidden flex flex-col p-5 gap-3">
+    <div className="h-full flex flex-col overflow-hidden">
+    <div className="flex-1 overflow-y-auto">
+    <div className="p-5 space-y-3">
 
       {/* Overtrading alert — today only */}
       {overtradingDays.includes(new Date().toISOString().slice(0, 10)) && (
-        <div className="shrink-0 flex items-start gap-3 border border-amber-500/25 bg-amber-500/5 px-4 py-2.5">
+        <div className="flex items-start gap-3 border border-amber-500/25 bg-amber-500/5 px-4 py-2.5">
           <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
           <p className="text-xs text-amber-300">
             Overtrading signal — you've hit your risk or target limit, or exceeded your average trade frequency for today.
@@ -138,8 +140,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Stats — shrink-0 */}
-      <div className="shrink-0 space-y-2.5">
+      {/* Stats */}
+      <div className="space-y-2.5">
         {/* All-time */}
         <div>
           <p className={`${SECTION_LABEL} mb-2`}>All time</p>
@@ -181,10 +183,10 @@ export default function Dashboard() {
       </div>
 
       {/* Main grid — 2 rows */}
-      <div className="flex-1 min-h-0 grid grid-cols-[7fr_3fr] grid-rows-[1fr_auto] gap-3">
+      <div className="grid grid-cols-[7fr_3fr] gap-3">
 
         {/* Row 1 — view-switched panel */}
-        <div className="col-span-2 min-h-0 flex flex-col gap-0">
+        <div className="col-span-2 flex flex-col gap-0">
           {/* View toggle */}
           <div className="shrink-0 flex items-center gap-0 mb-2 w-fit border border-border">
             <button
@@ -212,16 +214,14 @@ export default function Dashboard() {
           </div>
 
           {/* Panel content */}
-          <div className="flex-1 min-h-0">
+          <div className="h-[460px] overflow-hidden">
             {view === 'calendar' ? (
-              <div className="h-full overflow-y-auto">
-                <Calendar
-                  data={calendar ?? []}
-                  highFreqDays={overtradingDays}
-                  offset={offset}
-                  setOffset={setOffset}
-                />
-              </div>
+              <Calendar
+                data={calendar ?? []}
+                highFreqDays={overtradingDays}
+                offset={offset}
+                setOffset={setOffset}
+              />
             ) : (
               <EquityCurve data={calendar ?? []} />
             )}
@@ -302,6 +302,8 @@ export default function Dashboard() {
           onClose={() => setChartTrade(null)}
         />
       )}
+    </div>
+    </div>
     </div>
   )
 }

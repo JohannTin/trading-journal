@@ -16,7 +16,10 @@ def _update_trade_pnl(conn, trade_id: int):
         "SELECT COALESCE(SUM(pnl), 0) FROM exits WHERE trade_id = ? AND deleted_at IS NULL",
         (trade_id,),
     ).fetchone()[0]
-    conn.execute("UPDATE trades SET total_pnl = ? WHERE id = ?", (round(total, 2), trade_id))
+    entry_commission = conn.execute(
+        "SELECT COALESCE(commission, 0) FROM trades WHERE id = ?", (trade_id,)
+    ).fetchone()[0]
+    conn.execute("UPDATE trades SET total_pnl = ? WHERE id = ?", (round(total - entry_commission, 2), trade_id))
 
 
 def _auto_close(conn, trade_id: int):
@@ -82,14 +85,15 @@ def add_exit(payload: ExitCreate):
                 detail=f"Cannot exit {payload.qty} contracts — only {remaining} remaining",
             )
 
-        pnl = (payload.price - trade_d["fill"]) * payload.qty * 100
+        commission = float(payload.commission or 0)
+        pnl = (payload.price - trade_d["fill"]) * payload.qty * 100 - commission
         pct = ((payload.price - trade_d["fill"]) / trade_d["fill"]) * 100
 
         exit_date = payload.date or None
         cur = conn.execute(
-            "INSERT INTO exits (trade_id, date, time, qty, price, pnl, pct) VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO exits (trade_id, date, time, qty, price, pnl, pct, commission) VALUES (?,?,?,?,?,?,?,?)",
             (payload.trade_id, exit_date, payload.time, payload.qty, payload.price,
-             round(pnl, 2), round(pct, 2)),
+             round(pnl, 2), round(pct, 2), commission),
         )
         exit_id = cur.lastrowid
         conn.commit()
@@ -122,10 +126,11 @@ def update_exit(exit_id: int, payload: dict[str, Any]):
         ).fetchone()
         trade_d = dict(trade)
 
-        new_qty   = int(payload.get("qty",   exit_row["qty"]))
-        new_price = float(payload.get("price", exit_row["price"]))
-        new_time  = payload.get("time", exit_row["time"])
-        new_date  = payload.get("date", exit_row["date"]) or None
+        new_qty        = int(payload.get("qty",   exit_row["qty"]))
+        new_price      = float(payload.get("price", exit_row["price"]))
+        new_time       = payload.get("time", exit_row["time"])
+        new_date       = payload.get("date", exit_row["date"]) or None
+        new_commission = float(payload.get("commission", exit_row["commission"] or 0))
 
         other_exited = conn.execute(
             "SELECT COALESCE(SUM(qty), 0) as total FROM exits WHERE trade_id = ? AND id != ? AND deleted_at IS NULL",
@@ -139,12 +144,12 @@ def update_exit(exit_id: int, payload: dict[str, Any]):
                 detail=f"Cannot set qty to {new_qty} — only {remaining} contracts available",
             )
 
-        pnl = (new_price - trade_d["fill"]) * new_qty * 100
+        pnl = (new_price - trade_d["fill"]) * new_qty * 100 - new_commission
         pct = ((new_price - trade_d["fill"]) / trade_d["fill"]) * 100
 
         conn.execute(
-            "UPDATE exits SET date = ?, time = ?, qty = ?, price = ?, pnl = ?, pct = ? WHERE id = ?",
-            (new_date, new_time, new_qty, new_price, round(pnl, 2), round(pct, 2), exit_id),
+            "UPDATE exits SET date = ?, time = ?, qty = ?, price = ?, pnl = ?, pct = ?, commission = ? WHERE id = ?",
+            (new_date, new_time, new_qty, new_price, round(pnl, 2), round(pct, 2), new_commission, exit_id),
         )
         conn.commit()
 

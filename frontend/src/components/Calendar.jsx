@@ -94,7 +94,7 @@ export default function Calendar({ data = [], highFreqDays = [], offset = 0, set
   const todayYM = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
 
   return (
-    <div className="border border-border bg-card flex flex-col min-w-[520px]">
+    <div className="border border-border bg-card flex flex-col min-w-[520px] h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
         <button
@@ -169,13 +169,13 @@ export default function Calendar({ data = [], highFreqDays = [], offset = 0, set
       </div>
 
       {/* Week rows */}
-      <div className={`flex flex-col gap-1 px-2 pb-2 ${picking ? 'hidden' : ''}`}>
+      <div className={`flex-1 flex flex-col gap-1 px-2 pb-2 min-h-0 overflow-hidden ${picking ? 'hidden' : ''}`}>
         {weeks.map((week, wi) => {
           const { pnl: wPnl, days: wDays } = weekSummary(week)
           const isFirstWeek = wi === 0
 
           return (
-            <div key={wi} className="grid grid-cols-[repeat(7,2fr)_1fr] grid-rows-[90px] gap-1">
+            <div key={wi} className="grid grid-cols-[repeat(7,2fr)_1fr] gap-1 flex-1 min-h-0">
               {week.map((day, di) => {
                 if (!day) return (
                   <div key={`e-${wi}-${di}`} className="bg-muted/5" />

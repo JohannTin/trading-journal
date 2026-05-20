@@ -519,10 +519,13 @@ export default function TradeChart({ trade: initialTrade, onClose, defaultEditOp
   const [fitMacd,   setFitMacd]   = useState(false)
   const [fitRsi,    setFitRsi]    = useState(false)
   const [fitOption, setFitOption] = useState(false)
-  const [inds, setInds]           = useState({ vwap: true, ma1: true, ma2: true, ma3: true, ma4: true })
+  const [inds, setInds]           = useState({ vwap: false, ma1: false, ma2: false, ma3: false, ma4: false })
+  const [syncXhair, setSyncXhair] = useState(true)
   const [editOpen, setEditOpen]   = useState(defaultEditOpen)
-  const [ohlcInfo, setOhlcInfo]         = useState(null)
+  const [ohlcInfo, setOhlcInfo]             = useState(null)
   const [optionOhlcInfo, setOptionOhlcInfo] = useState(null)
+  const [macdInfo, setMacdInfo]             = useState(null)
+  const [rsiInfo,  setRsiInfo]              = useState(null)
 
   const { data: allTrades = [] } = useQuery({ queryKey: ['trades'], queryFn: () => getTrades() })
   const trade = allTrades.find(t => t.id === initialTrade.id) ?? initialTrade
@@ -534,11 +537,13 @@ export default function TradeChart({ trade: initialTrade, onClose, defaultEditOp
 
   const vwapRef     = useRef(null)
   const maRefs      = useRef([null, null, null, null])
-  const logScaleRef = useRef(false)
-  const indsRef     = useRef({ vwap: true, ma1: true, ma2: true, ma3: true, ma4: true })
+  const logScaleRef   = useRef(false)
+  const indsRef       = useRef({ vwap: false, ma1: false, ma2: false, ma3: false, ma4: false })
+  const syncXhairRef  = useRef(true)
 
-  useEffect(() => { logScaleRef.current = logScale }, [logScale])
-  useEffect(() => { indsRef.current     = inds     }, [inds])
+  useEffect(() => { logScaleRef.current  = logScale  }, [logScale])
+  useEffect(() => { indsRef.current      = inds      }, [inds])
+  useEffect(() => { syncXhairRef.current = syncXhair }, [syncXhair])
 
   useEffect(() => {
     priceRef.current?.priceScale('right').applyOptions({ mode: logScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal })
@@ -667,21 +672,40 @@ export default function TradeChart({ trade: initialTrade, onClose, defaultEditOp
       maRefs.current[i] = s
     })
 
+    let mPrimarySeries = null
+    let mMacdSeries    = null
+    let mSignalSeries  = null
+    let rPrimarySeries = null
+
     if (showInds) {
       const hd = candles.filter(c => c.macd_hist != null).map(c => ({ time: c.ts, value: c.macd_hist, color: c.macd_hist >= 0 ? '#22c55e88' : '#ef444488' }))
-      if (hd.length) mChart.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false }).setData(hd)
+      if (hd.length) { mPrimarySeries = mChart.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false }); mPrimarySeries.setData(hd) }
       const md = candles.filter(c => c.macd != null).map(c => ({ time: c.ts, value: c.macd }))
-      if (md.length) mChart.addLineSeries({ color: '#60a5fa', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }).setData(md)
+      if (md.length) { mMacdSeries = mChart.addLineSeries({ color: '#60a5fa', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }); mMacdSeries.setData(md); if (!mPrimarySeries) mPrimarySeries = mMacdSeries }
       const sd = candles.filter(c => c.macd_signal != null).map(c => ({ time: c.ts, value: c.macd_signal }))
-      if (sd.length) mChart.addLineSeries({ color: '#f97316', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }).setData(sd)
+      if (sd.length) { mSignalSeries = mChart.addLineSeries({ color: '#f97316', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }); mSignalSeries.setData(sd) }
+
+      mChart.subscribeCrosshairMove(params => {
+        if (!params.time) { setMacdInfo(null); return }
+        const hist = mPrimarySeries ? params.seriesData?.get(mPrimarySeries) : null
+        const macd = mMacdSeries    ? params.seriesData?.get(mMacdSeries)    : null
+        const sig  = mSignalSeries  ? params.seriesData?.get(mSignalSeries)  : null
+        setMacdInfo((hist || macd || sig) ? { hist: hist?.value ?? null, macd: macd?.value ?? null, signal: sig?.value ?? null } : null)
+      })
 
       const rd = candles.filter(c => c.rsi != null).map(c => ({ time: c.ts, value: c.rsi }))
       if (rd.length) {
-        const rs = rChart.addLineSeries({ color: '#a78bfa', lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false })
-        rs.setData(rd)
-        rs.createPriceLine({ price: 70, color: '#ef444466', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false })
-        rs.createPriceLine({ price: 30, color: '#22c55e66', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false })
-        rs.createPriceLine({ price: 50, color: '#6b728066', lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: false })
+        rPrimarySeries = rChart.addLineSeries({ color: '#a78bfa', lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false })
+        rPrimarySeries.setData(rd)
+        rPrimarySeries.createPriceLine({ price: 70, color: '#ef444466', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false })
+        rPrimarySeries.createPriceLine({ price: 30, color: '#22c55e66', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false })
+        rPrimarySeries.createPriceLine({ price: 50, color: '#6b728066', lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: false })
+
+        rChart.subscribeCrosshairMove(params => {
+          if (!params.time) { setRsiInfo(null); return }
+          const data = params.seriesData?.get(rPrimarySeries)
+          setRsiInfo(data ? { rsi: data.value } : null)
+        })
       }
     }
 
@@ -763,25 +787,26 @@ export default function TradeChart({ trade: initialTrade, onClose, defaultEditOp
       }
     }
 
-    const paneEls = [priceEl, macdEl, rsiEl, optionEl] 
+    const primarySeriesMap = new Map()
+    primarySeriesMap.set(pChart, cs)
+    if (oChart && ocs) primarySeriesMap.set(oChart, ocs)
+    if (mPrimarySeries) primarySeriesMap.set(mChart, mPrimarySeries)
+    if (rPrimarySeries) primarySeriesMap.set(rChart, rPrimarySeries)
+    const syncChartList = Array.from(primarySeriesMap.keys())
+
     let xhairSyncing = false
-    chartsRef.current.forEach((src, si) => {
+    syncChartList.forEach(src => {
       src.subscribeCrosshairMove(params => {
         if (xhairSyncing) return
         xhairSyncing = true
-        chartsRef.current.forEach((dst, di) => {
-          if (di === si) return
-          const dstEl = paneEls[di]?.current
-          if (!dstEl) return
-          if (params.time == null) {
-            dstEl.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }))
+        syncChartList.forEach(dst => {
+          if (dst === src) return
+          const series = primarySeriesMap.get(dst)
+          if (!series) return
+          if (!syncXhairRef.current || params.time == null) {
+            dst.clearCrosshairPosition()
           } else {
-            const x = dst.timeScale().timeToCoordinate(params.time)
-            if (x == null) return
-            const r = dstEl.getBoundingClientRect()
-            dstEl.dispatchEvent(new MouseEvent('mousemove', {
-              bubbles: true, clientX: r.left + x, clientY: r.top + r.height / 2,
-            }))
+            dst.setCrosshairPosition(Infinity, params.time, series)
           }
         })
         xhairSyncing = false
@@ -811,15 +836,17 @@ export default function TradeChart({ trade: initialTrade, onClose, defaultEditOp
       chartsRef.current = []; priceRef.current = null; oChartRef.current = null; vwapRef.current = null; maRefs.current = [null, null, null, null]
       setOhlcInfo(null)
       setOptionOhlcInfo(null)
+      setMacdInfo(null)
+      setRsiInfo(null)
     }
   }, [candles, optionCandles, isYahoo, trade]) 
 
   const handleUpload = async e => {
     const file = e.target.files[0]; if (!file) return; e.target.value = ''
     setUploading(true); setUploadError(null)
-    try { await uploadChartCsv(file, trade.ticker); refetch() }
+    try { await uploadChartCsv(file, trade.ticker) }
     catch (err) { setUploadError(err.message) }
-    finally { setUploading(false) }
+    finally { setUploading(false); refetch() }
   }
 
   const handleRemoveTickerCsv = async () => {
@@ -856,9 +883,9 @@ export default function TradeChart({ trade: initialTrade, onClose, defaultEditOp
   const handleOptionUpload = async e => {
     const file = e.target.files[0]; if (!file) return; e.target.value = ''
     setUploadingOption(true); setUploadError(null)
-    try { await uploadChartCsv(file, optionTicker); refetchOption() }
+    try { await uploadChartCsv(file, optionTicker) }
     catch (err) { setUploadError(err.message) }
-    finally { setUploadingOption(false) }
+    finally { setUploadingOption(false); refetchOption() }
   }
 
   const handleRemoveOptionCsv = async () => {
@@ -1096,6 +1123,13 @@ export default function TradeChart({ trade: initialTrade, onClose, defaultEditOp
                       <PaneHeader label="MACD" collapsed={collapsed.macd} onToggle={() => toggle('macd')} />
                       <div className="relative" style={{ height: paneH.macd }}>
                         <div ref={macdEl} className="absolute inset-0" />
+                        {!collapsed.macd && macdInfo && (
+                          <div className="absolute top-1.5 left-2 z-10 flex items-center gap-2.5 font-mono text-[11px] pointer-events-none select-none" style={{ color: 'rgba(255,255,255,0.38)' }}>
+                            {macdInfo.hist   != null && <span>H <span style={{ color: macdInfo.hist >= 0 ? '#4ade80' : '#f87171' }}>{macdInfo.hist.toFixed(3)}</span></span>}
+                            {macdInfo.macd   != null && <span>M <span style={{ color: '#60a5fa' }}>{macdInfo.macd.toFixed(3)}</span></span>}
+                            {macdInfo.signal != null && <span>S <span style={{ color: '#f97316' }}>{macdInfo.signal.toFixed(3)}</span></span>}
+                          </div>
+                        )}
                         {!collapsed.macd && <div className="absolute top-1.5 right-1.5 flex gap-0.5 z-10"><ChartOverlayBtn active={fitMacd} onClick={() => { const v = !fitMacd; setFitMacd(v); if (v) chartsRef.current[1]?.timeScale().fitContent() }}>Fit</ChartOverlayBtn><ChartOverlayBtn active={logMacd} onClick={() => setLogMacd(l => !l)}>Log</ChartOverlayBtn></div>}
                       </div>
                     </div>
@@ -1104,6 +1138,11 @@ export default function TradeChart({ trade: initialTrade, onClose, defaultEditOp
                       <PaneHeader label="RSI" collapsed={collapsed.rsi} onToggle={() => toggle('rsi')} />
                       <div className="relative" style={{ height: paneH.rsi }}>
                         <div ref={rsiEl} className="absolute inset-0" />
+                        {!collapsed.rsi && rsiInfo && (
+                          <div className="absolute top-1.5 left-2 z-10 font-mono text-[11px] pointer-events-none select-none" style={{ color: 'rgba(255,255,255,0.38)' }}>
+                            RSI <span style={{ color: '#a78bfa' }}>{rsiInfo.rsi.toFixed(2)}</span>
+                          </div>
+                        )}
                         {!collapsed.rsi && <div className="absolute top-1.5 right-1.5 flex gap-0.5 z-10"><ChartOverlayBtn active={fitRsi} onClick={() => { const v = !fitRsi; setFitRsi(v); if (v) chartsRef.current[2]?.timeScale().fitContent() }}>Fit</ChartOverlayBtn><ChartOverlayBtn active={logRsi} onClick={() => setLogRsi(l => !l)}>Log</ChartOverlayBtn></div>}
                       </div>
                     </div>
@@ -1132,6 +1171,9 @@ export default function TradeChart({ trade: initialTrade, onClose, defaultEditOp
                 )}
                 <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-green-500" />Entry</span>
                 <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-red-500" />Exit</span>
+                <span className="ml-auto">
+                  <ChartOverlayBtn active={syncXhair} onClick={() => setSyncXhair(v => !v)}>Sync</ChartOverlayBtn>
+                </span>
               </div>
             )}
           </div>

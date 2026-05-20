@@ -329,8 +329,11 @@ async def upload_chart_data(
             records,
         )
         conn.commit()
-        _backfill_computed(conn)
-        conn.commit()
+        try:
+            _backfill_computed(conn)
+            conn.commit()
+        except Exception:
+            pass  # backfill is best-effort; chart data is already saved
     finally:
         conn.close()
 
@@ -529,8 +532,11 @@ def save_yahoo_day(ticker: str, date: str):
             records,
         )
         conn.commit()
-        _backfill_computed(conn)
-        conn.commit()
+        try:
+            _backfill_computed(conn)
+            conn.commit()
+        except Exception:
+            pass  # backfill is best-effort; chart data is already saved
     finally:
         conn.close()
 

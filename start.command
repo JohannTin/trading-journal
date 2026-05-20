@@ -8,6 +8,6 @@ if [ ! -d "node_modules/concurrently" ]; then
 fi
 
 # Open browser after a short delay to let the server start
-sleep 3 && open http://localhost:5173 &
+sleep 3 && open -a "Google Chrome" http://localhost:5173 &
 
 npm run start

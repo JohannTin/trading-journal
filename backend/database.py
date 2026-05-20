@@ -282,6 +282,23 @@ def _run_init():
                 if "duplicate column name" not in str(e).lower():
                     raise
 
+    # Migrate: commission tracking on trades and exits
+    trade_cols = _table_columns(conn, "trades")
+    if "commission" not in trade_cols:
+        try:
+            conn.execute("ALTER TABLE trades ADD COLUMN commission REAL NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                raise
+
+    exit_cols = _table_columns(conn, "exits")
+    if "commission" not in exit_cols:
+        try:
+            conn.execute("ALTER TABLE exits ADD COLUMN commission REAL NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                raise
+
     # Indices for fast lookups
     conn.execute("CREATE INDEX IF NOT EXISTS idx_trades_account_date ON trades(account_id, date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_exits_trade_id ON exits(trade_id)")
